@@ -53,10 +53,10 @@ LOG="$BUILD_DIR/smoke-server.log"
 $PY -m sglang.launch_server \
   --model-path "$MODEL" \
   --mem-fraction-static 0.85 \
-  --context-length 8192 \
   --cuda-graph-max-bs-decode 8 \
   --cuda-graph-max-bs-prefill 4 \
   --max-running-requests 8 \
+  ${SGLANG_SMOKE_EXTRA_ARGS:-} \
   --host 127.0.0.1 --port "$PORT" \
   --log-level info >"$LOG" 2>&1 &
 SERVER_PID=$!

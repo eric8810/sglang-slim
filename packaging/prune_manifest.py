@@ -100,7 +100,10 @@ PACKAGE_EXCLUDES = [
 # registry.py discovers models via pkgutil scanning, so missing files are
 # simply not registered (SGLang upstream design, zero patch).
 # ---------------------------------------------------------------------------
-MODELS_KEEP_PREFIXES = ("llama", "qwen", "deepseek")
+MODELS_KEEP_PREFIXES = (
+    "llama", "qwen", "deepseek", "granite",
+    "mixtral",  # granitemoe.py imports mixtral.py (dependency closure)
+)
 MODELS_KEEP_SHARED = {"__init__.py", "registry.py", "utils.py", "transformers.py"}
 MODELS_KEEP_DIRS = {"deepseek_common"}
 

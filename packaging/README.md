@@ -28,9 +28,30 @@ bash   packaging/smoke_test.sh --crash-on-jit   # Go/No-Go：缓存命中验证
 | 环境 | python-build-standalone 3.12.14 + venv（76 个依赖轮子，8.9GB） |
 | 冒烟 | Qwen3-4B bf16 顺利启动，60s healthy（含首轮 JIT），生成正常 |
 | **Go/No-Go** | `SGLANG_CRASH_ON_JIT_COMPILE=1` 冷启动 **25s healthy，零编译触发**，输出与首轮一致（temp=0），e2e 0.66s vs 首轮 4.49s |
+| **真无-toolkit Go/No-Go（dense）** | ✅ 卸载 nvcc 轮子 + 屏蔽系统 CUDA + crash-on-jit：25s healthy，零编译，输出一致 |
+| **MoE 冒烟（granite-3.0-1b-a400m）** | ✅ 原生 sglang MoE + Triton fused MoE kernel（E=32,N=512），fp8 在线量化亦 PASS |
+| **真无-toolkit Go/No-Go（MoE）** | ✅ 20s healthy，零编译 |
 
-结论：**预生成 JIT 缓存替代 CUDA toolkit 的路线在本机验证成立**（Qwen3-4B/dense 场景）。
-MoE 模型（deep-gemm 3072 kernel 预编译）与真无-toolkit 环境（换机或卸 nvcc 轮子）仍待验证。
+结论：**预生成 JIT 缓存替代 CUDA toolkit 的路线在本机验证成立**。
+验证覆盖：dense（Qwen3-4B）+ MoE（granite，Triton fused kernel 路径）。
+**未覆盖边界**：deep-gemm grouped GEMM 路径（需 DeepSeek MLA 系或特定 fp8 形状触发；
+granite 走 triton/flashinfer 路径）。下一候选：DeepSeek-V2-Lite AWQ（~9.4GB）。
+复现无-toolkit 验证：`pip uninstall nvidia-cuda-nvcc` 后 `smoke_test.sh --no-toolkit`。
+
+### MoE 验证的关键发现（模型白名单的依赖闭包）
+
+granitemoe.py 模块级依赖 mixtral.py——首轮白名单漏掉 mixtral 后，registry
+**静默降级到 Transformers fallback**（不 crash、只打一条日志），MoE 走 HF eager
+实现而非 sglang fused kernel，预热面作废。白名单加入 mixtral 后原生实现恢复。
+教训：**白名单必须做依赖闭包检查**（白名单内模型 import 的白名单外模型文件会
+静默降级）；后续 build_slim.py 应把 models 排除纳入 AST 检查（warn 级）。
+
+其他实测事实：
+- JIT 缓存全部集中在 `~/.cache/sglang/`（jit + triton + inductor/nv），sglang 把
+  Triton 缓存重定向到了自己管理的目录——打包器只需收集这一个目录
+- granite + CUDA graph capture 有上游 bug（非 pinned 拷贝），冒烟用
+  `--cuda-graph-backend-decode=disabled` 绕过（SGLANG_SMOKE_EXTRA_ARGS 透传）
+- granite 缺 RTX 5060 Ti 的 fused MoE tuned config，走默认配置（性能次优不影响正确性）
 
 实测体积（自包含目录估算的输入）：
 
