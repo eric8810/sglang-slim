@@ -3,6 +3,26 @@
 本目录是 sglang 单机精简发行版的构建脚手架。核心约束：**对 sglang 源码零 diff**——
 上游更新只需重跑构建管线，不存在 rebase。
 
+## 实际运行演示（2026-09-16，Qwen3-4B，bundle 部署）
+
+部署形态：tar.zst 解压到 /tmp，`env -i`（无任何环境变量，PATH 仅 /usr/bin:/bin）
+启动 launcher：
+
+| 指标 | 值 |
+|---|---|
+| 启动到 healthy | ~60s（权重加载 1.2s + prefill CUDA graph 捕获 42s[42 形状] + decode graph 0.7s） |
+| KV cache 容量 | 38,925 tokens（bf16，K+V 5.3GB，context 40,960） |
+| 单流 decode 速度 | **~49 tok/s**（Qwen3-4B bf16） |
+| 4 并发 chat | 全部 0.56s 完成（continuous batching 生效，prefill 吞吐 3072 tok/s） |
+| Radix cache | 命中（重复 prompt #cached-token 21） |
+| chat API | 思考模式与 /no_think 均正常，代码类回答正确 |
+
+运行期观察（非阻塞，记录备查）：
+- 3 个 Triton kernel（write_req_to_token_pool 等）在 serving started 后才
+  device-load（从缓存加载非编译，毫秒级；上游提示 pre-load 以避 OOM 风险——
+  产品化可在 warmup 请求中覆盖）
+- 第四处依赖闭包：deepseek_v4_dspark → dspark.py（已入白名单）
+
 ## 用法（完整管线）
 
 ```bash

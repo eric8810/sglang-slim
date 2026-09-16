@@ -104,6 +104,7 @@ MODELS_KEEP_PREFIXES = (
     "llama", "qwen", "deepseek", "granite",
     "mixtral",  # granitemoe.py imports mixtral.py (dependency closure)
     "dbrx",     # deepseek_v4.py imports dbrx.py (dependency closure, found in e2e)
+    "dspark",   # deepseek_v4_dspark.py imports dspark.py (closure #3, found in serve log)
 )
 MODELS_KEEP_SHARED = {"__init__.py", "registry.py", "utils.py", "transformers.py"}
 MODELS_KEEP_DIRS = {"deepseek_common"}
