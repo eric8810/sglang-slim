@@ -22,11 +22,13 @@
 |---|---|
 | 构建 + AST 契约 | ✅ srt 792,340 → 626,206 行（-21%），排除 356 文件 |
 | Qwen3-4B bf16 冒烟 | ✅ 60s healthy（含首轮 JIT），生成正常 |
-| **Go/No-Go：JIT 缓存命中** | ✅ `SGLANG_CRASH_ON_JIT_COMPILE=1` 冷启动 25s，**零编译触发**，输出一致 |
+| JIT 缓存命中 | ✅ `SGLANG_CRASH_ON_JIT_COMPILE=1` 冷启动 25s，**零编译触发**，输出一致 |
+| **真无-toolkit Go/No-Go** | ✅ 卸载 nvcc 轮子 + 屏蔽系统 CUDA + crash-on-jit：25s healthy，零编译，输出一致 |
 | 自包含目录体积 | ≈ 9.4 GB 未压缩（PBS Python 357M + 依赖 8.9G + slim 树 126M） |
 
-> Go/No-Go 的意义：预生成 JIT 缓存可以**完全替代目标机上的 CUDA Toolkit**，
-> 目标机只需要 NVIDIA 驱动。
+> 无-toolkit Go/No-Go 的意义：目标机**只需要 NVIDIA 驱动**——CUDA 运行时由 pip 轮子
+> 携带，JIT 编译产物由预生成缓存替代，nvcc/CUDA Toolkit 完全不需要。
+> 复现：`pip uninstall nvidia-cuda-nvcc` 后 `smoke_test.sh --no-toolkit`。
 
 ## 用法
 
@@ -59,9 +61,9 @@ research/     完整调研资产：binary 形态先例、Python→binary 打包�
 
 ## 路线图
 
+- [x] ~~真无-toolkit 环境 Go/No-Go~~（2026-09-16 PASS：卸 nvcc + 屏蔽 CUDA 后 crash-on-jit 冷启动零编译）
 - [ ] 依赖瘦身（剔除多模态依赖，venv 8.9G → <7G）
-- [ ] 真无-toolkit 环境 Go/No-Go（卸 nvcc 轮子 + 屏蔽系统 CUDA）
-- [ ] MoE 模型预热面验证（deep-gemm 3072 kernel 预编译）
+- [ ] MoE 模型预热面验证（deep-gemm 3072 kernel 预编译）——需目标模型确定（16GB 显存需量化权重）
 - [ ] 自包含目录打包器（tar.zst + launcher）与 OCI 镜像包装
 - [ ] JIT 缓存跨机器可移植性验证（换机后 key 命中）
 - [ ] 层 3 patch 集合（speculative/lora/multimodal 延迟 import 化，目标 srt -43%）

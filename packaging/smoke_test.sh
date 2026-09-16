@@ -24,6 +24,20 @@ if [[ "${1:-}" == "--crash-on-jit" ]]; then
   echo "[smoke] SGLANG_CRASH_ON_JIT_COMPILE=1 (cache-hit verification mode)"
 fi
 
+if [[ "${1:-}" == "--no-toolkit" ]]; then
+  # Simulate a toolkit-free target machine: scrub nvcc/CUDA_HOME from the
+  # environment. Combined with --crash-on-jit this is the strict no-toolkit
+  # Go/No-Go (uninstall the nvidia-cuda-nvcc wheel first, see README).
+  export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '/cuda' | paste -sd:)"
+  unset CUDA_HOME CUDA_PATH
+  export SGLANG_CRASH_ON_JIT_COMPILE=1
+  if command -v nvcc >/dev/null 2>&1; then
+    echo "[smoke] WARNING: nvcc still resolvable via $(command -v nvcc)" >&2
+  else
+    echo "[smoke] no-toolkit mode: nvcc unreachable, CUDA_HOME unset"
+  fi
+fi
+
 test -d "$SLIM_TREE/sglang" || { echo "slim tree missing: $SLIM_TREE (run build_slim.py first)" >&2; exit 1; }
 test -d "$MODEL" || { echo "model missing: $MODEL" >&2; exit 1; }
 test -x "$VENV/bin/python" || { echo "venv python missing: $VENV (run install_deps.py first)" >&2; exit 1; }
