@@ -3,14 +3,37 @@
 本目录是 sglang 单机精简发行版的构建脚手架。核心约束：**对 sglang 源码零 diff**——
 上游更新只需重跑构建管线，不存在 rebase。
 
-## 用法
+## 用法（完整管线）
 
 ```bash
-python3 packaging/build_slim.py            # 装配 + 双重验证 → dist/sglang-slim/
-python3 packaging/install_deps.py --venv <dir> --python <pbs-python>   # 依赖装配
-bash   packaging/smoke_test.sh             # 冒烟（首轮 = JIT 预热）
-bash   packaging/smoke_test.sh --crash-on-jit   # Go/No-Go：缓存命中验证
+python3 packaging/build_slim.py                                # 1. slim 树 + AST 契约
+python3 packaging/install_deps.py --venv <V> --python <PBS_PY> # 2. 依赖装配（瘦身清单内置）
+SGLANG_SMOKE_MODEL=<M> bash packaging/smoke_test.sh            # 3. 预热（首轮含 JIT 编译）
+SGLANG_SLIM_BUILD=<B> bash packaging/make_bundle.sh            # 4. 自包含 bundle + tar.zst
+SGLANG_SMOKE_MODEL=<M> bash packaging/e2e_verify.sh <TARBALL>  # 5. E2E 交付验证
+# 目标机（仅需 NVIDIA 驱动）：
+#   tar --zstd -xf sglang-lite-*.tar.zst && ./sglang-lite/bin/sglang-serve --model-path <M> ...
 ```
+
+### E2E 交付验证抓到的四个真实缝隙（每个都只有端到端才能暴露）
+
+1. **flashinfer import 时写日志**到其 workspace（被重定向进缓存目录）→ 只读交付
+   崩溃。解法：launcher **seed 模式**——包保持只读，首启把预热缓存复制到
+   `${XDG_CACHE_HOME:-~/.cache}/sglang-slim-runtime`（~30MB，秒级），此后指向它
+2. **`cp -a` 保留只读权限位**：从只读包 seed 出来的缓存仍只读 → seed 后
+   `chmod -R u+w`
+3. **flashinfer 0.6.18 设计上每次启动 spawn ninja**：`try_load` 对 JIT 路径永远
+   返回 None（core.py:396 注释明说 freshness 交给 ninja 扫描），即使全缓存命中。
+   venv 冒烟时被 PATH 里的 ninja 静默掩盖（教训：**工具链在场会掩盖预热缺口**，
+   严格验证必须 `env -i`）。解法：bundle 自带 ninja 二进制（wheel 装在 venv/bin
+   而非 site-packages），launcher 把 `bin/` 加进 PATH
+4. **`SGLANG_JIT_CACHE_DIR` 不从 `SGLANG_CACHE_DIR` 派生**（environ.py:1155 默认
+   None → cache.py:302 硬编码 fallback `~/.cache/sglang/jit`，与 DG/cute_aot 的
+   派生行为不一致）。解法：launcher 显式设置两个变量
+
+附带发现：**deepseek_v4.py 依赖 dbrx.py**（又一处白名单依赖闭包，dbrx 已加入
+`MODELS_KEEP_PREFIXES`）。依赖闭包目前靠"运行时看 fallback 日志"发现，后续应把
+models 排除纳入 build_slim 的 AST 检查（warn 级）。
 
 ## 验证机制（零 patch 契约的执行者）
 
@@ -32,6 +55,7 @@ bash   packaging/smoke_test.sh --crash-on-jit   # Go/No-Go：缓存命中验证
 | **MoE 冒烟（granite-3.0-1b-a400m）** | ✅ 原生 sglang MoE + Triton fused MoE kernel（E=32,N=512），fp8 在线量化亦 PASS |
 | **真无-toolkit Go/No-Go（MoE）** | ✅ 20s healthy，零编译 |
 | **DeepGEMM JIT 触发验证** | ✅ `--moe-runner-backend deep_gemm` + fp8：GROUPED_GEMM_NT_F8F8BF16（32 groups）编译成功 + 512 warmup 完成，缓存落盘 `~/.cache/sglang/deep_gemm`；fp8 per-token-group-quant kernel 亦被 JIT |
+| **自包含 bundle + E2E 交付验证** | ✅ 8.0G 目录 / 3.3G tar.zst；解压到异路径 + 假 HOME + 只读缓存 + `env -i` 无 toolkit + crash-on-jit：**60s healthy，生成正常**（granite MoE） |
 
 结论：**预生成 JIT 缓存替代 CUDA toolkit 的路线在本机验证成立**。
 验证覆盖：dense（Qwen3-4B）+ MoE（granite，Triton fused kernel）+ fp8 量化 +
