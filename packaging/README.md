@@ -37,10 +37,24 @@ MoE 模型（deep-gemm 3072 kernel 预编译）与真无-toolkit 环境（换机
 | 组件 | 体积 |
 |---|---|
 | PBS Python 3.12.14 | 357 MB |
-| 依赖 venv（nvidia 轮子 3.6G + torch 1.2G） | 8.9 GB |
+| 依赖 venv（瘦身后：nvidia 运行时 3.2G + torch 1.2G + sgl_kernel 1.2G + triton 691M） | **7.5 GB**（原 8.9G，-16%） |
 | slim 源码树 | 126 MB |
 | JIT 缓存（Qwen3-4B 场景） | 10 MB |
-| **自包含目录合计（未压缩）** | **≈ 9.4 GB**（压缩后约 4-5 GB；依赖层 2/3 剔除后可再减） |
+| **自包含目录合计（未压缩）** | **≈ 8.0 GB** |
+
+### 依赖瘦身实验记录（2026-09-16，全部经 --no-toolkit 冒烟验证）
+
+| 结果 | 包 |
+|---|---|
+| ✅ 已卸载 | torchaudio、torchcodec、av、timm、datasets(+pyarrow)、modelscope、blobfile、py-spy、watchfiles、anthropic、mistral_common、outlines、llguidance、interegular、tilelang(+numba/llvmlite)、nvidia-cutlass-dsl、nvidia-mathdx |
+| ⚠️ 换 CPU 版 | torchvision（`common.py:98` 顶层 import decode_jpeg → 6.6M CPU 轮替代 CUDA 轮） |
+| ❌ 不可卸（启动硬依赖） | pillow（`srt/utils/common.py:93`）、soundfile（`entrypoints/openai/audio_chunking.py:24` → http_server 链）、xgrammar（`function_call/inkling_detector.py:6` → server_args 链，114M）、gguf（quantization 注册表）、IPython（`sglang/__init__` → `sglang/utils.py:26`）、tokenspeed-triton（deepseek MLA 链） |
+
+**关键发现（mathdx 实验）**：sglang JIT 缓存 key 指纹包含已安装包集合
+（torch/flashinfer/deep_gemm/nvidia-mathdx/tvm-ffi 版本，见
+`kernels/jit/utils/compile/cache.py`）。卸载 mathdx 后旧缓存全部 miss。
+推论：**目标机的 pip 包集合必须与预热环境完全一致**——瘦身必须在预热之前
+完成，且打包器需以 freeze 清单锁定。
 
 已知限制：
 - Qwen3-8B fp8 在线量化在 15.5GB 显存上 OOM（bf16 峰值 16.4GB），量化冒烟需更小模型或预量化权重
