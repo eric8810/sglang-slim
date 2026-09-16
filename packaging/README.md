@@ -76,6 +76,7 @@ models 排除纳入 build_slim 的 AST 检查（warn 级）。
 | **真无-toolkit Go/No-Go（MoE）** | ✅ 20s healthy，零编译 |
 | **DeepGEMM JIT 触发验证** | ✅ `--moe-runner-backend deep_gemm` + fp8：GROUPED_GEMM_NT_F8F8BF16（32 groups）编译成功 + 512 warmup 完成，缓存落盘 `~/.cache/sglang/deep_gemm`；fp8 per-token-group-quant kernel 亦被 JIT |
 | **自包含 bundle + E2E 交付验证** | ✅ 8.0G 目录 / 3.3G tar.zst；解压到异路径 + 假 HOME + 只读缓存 + `env -i` 无 toolkit + crash-on-jit：**60s healthy，生成正常**（granite MoE） |
+| **运行库 block-list 裁剪** | ✅ `/proc/maps` 实测：cudnn 子库 460M + cu13 死重 310M + 头文件 97M 未加载 → 删除后 7.1G 重验 PASS（55s healthy + chat 正常） |
 
 结论：**预生成 JIT 缓存替代 CUDA toolkit 的路线在本机验证成立**。
 验证覆盖：dense（Qwen3-4B）+ MoE（granite，Triton fused kernel）+ fp8 量化 +
