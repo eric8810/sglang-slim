@@ -1,0 +1,4 @@
+dist/
+build-slim/
+__pycache__/
+*.pyc
