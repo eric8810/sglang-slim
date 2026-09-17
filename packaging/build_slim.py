@@ -38,19 +38,93 @@ def build_exclude_matchers():
     return patterns
 
 
+MODELS_CLOSURE: set[str] | None = None  # files, populated by compute_models_closure()
+MODELS_CLOSURE_DIRS: set[str] | None = None
+
+
 def is_model_excluded(rel_posix: str) -> bool:
-    """Apply the models whitelist: everything under srt/models/ that is not
-    whitelisted by prefix / shared file / shared dir is dropped."""
+    """Apply the models whitelist (prefix seed + dependency closure):
+    everything under srt/models/ not in the closure is dropped."""
     if not rel_posix.startswith("srt/models/"):
         return False
     rest = rel_posix[len("srt/models/") :]
     if "/" in rest:
         first = rest.split("/", 1)[0]
-        return first not in prune_manifest.MODELS_KEEP_DIRS
-    return (
-        rest not in prune_manifest.MODELS_KEEP_SHARED
-        and not rest.startswith(prune_manifest.MODELS_KEEP_PREFIXES)
-    )
+        return first not in (
+            prune_manifest.MODELS_KEEP_DIRS | (MODELS_CLOSURE_DIRS or set())
+        )
+    if rest in prune_manifest.MODELS_KEEP_SHARED:
+        return False
+    if MODELS_CLOSURE is None:
+        raise RuntimeError("compute_models_closure() must run before staging")
+    return rest not in MODELS_CLOSURE
+
+
+def compute_models_closure(src: Path) -> tuple[set[str], set[str]]:
+    """Transitive dependency closure of the model whitelist.
+
+    Model files and multimodal processors import model classes at module
+    level from other model files (e.g. processors/qwen_vl.py imports
+    cosmos3, interns2*, qwen2_5_vl ...). Registry loading swallows the
+    ImportError, so a missing dependency silently kills a whole processor
+    or model family. Instead of hunting these by hand (5 incidents so far:
+    mixtral, dbrx, dspark, clip, cosmos3), expand the whitelist to the
+    fixed point of: model files reachable from the prefix seed, from any
+    kept model file, or from any multimodal processor, via module-level
+    imports. Handles three import forms:
+      - from sglang.srt.models import X          (name import -> X.py or X/)
+      - from sglang.srt.models.X import ...      (module import -> X.py or X/)
+      - from sglang.srt.models.X.Y import ...    (dir member -> keep dir X/)
+    """
+    models_dir = src / "srt" / "models"
+    keep = {
+        f.name
+        for f in models_dir.glob("*.py")
+        if f.name.startswith(prune_manifest.MODELS_KEEP_PREFIXES)
+    }
+    keep |= prune_manifest.MODELS_KEEP_SHARED
+    keep_dirs: set[str] = set()
+
+    processors_dir = src / "srt" / "multimodal" / "processors"
+
+    def model_import_targets(py: Path) -> set[str]:
+        """First path segment after sglang.srt.models referenced by any
+        module-level import statement (both module and name forms)."""
+        out: set[str] = set()
+        tree = ast.parse(py.read_text(encoding="utf-8", errors="replace"), filename=str(py))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            mod = node.module or ""
+            if mod == "sglang.srt.models":
+                for alias in node.names:  # from sglang.srt.models import X
+                    out.add(alias.name)
+            elif mod.startswith("sglang.srt.models.") and node.level == 0:
+                out.add(mod.split(".")[3])
+        return out
+
+    changed = True
+    while changed:
+        changed = False
+        flat: list[Path] = [models_dir / n for n in keep if (models_dir / n).exists()]
+        for d in keep_dirs:
+            flat += list((models_dir / d).rglob("*.py"))
+        if processors_dir.is_dir():
+            flat += list(processors_dir.rglob("*.py"))
+        for py in flat:
+            for seg in model_import_targets(py):
+                if seg in ("__init__",):
+                    continue
+                if (models_dir / seg).is_dir():
+                    if seg not in keep_dirs:
+                        keep_dirs.add(seg)
+                        changed = True
+                elif (models_dir / (seg + ".py")).exists():
+                    fname = seg + ".py"
+                    if fname not in keep:
+                        keep.add(fname)
+                        changed = True
+    return keep, keep_dirs
 
 
 def should_exclude(rel_posix: str, patterns: list[str]) -> bool:
@@ -124,6 +198,13 @@ def main() -> int:
 
     src: Path = args.src
     out: Path = args.out
+
+    global MODELS_CLOSURE, MODELS_CLOSURE_DIRS
+    MODELS_CLOSURE, MODELS_CLOSURE_DIRS = compute_models_closure(src)
+    print(f"[closure] model whitelist closure: {len(MODELS_CLOSURE)} files, "
+          f"dirs {sorted(MODELS_CLOSURE_DIRS)} "
+          f"(seed prefixes {prune_manifest.MODELS_KEEP_PREFIXES} + deps)")
+
     if out.exists():
         import shutil
 

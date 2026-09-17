@@ -76,7 +76,21 @@ models 排除纳入 build_slim 的 AST 检查（warn 级）。
 | **真无-toolkit Go/No-Go（MoE）** | ✅ 20s healthy，零编译 |
 | **DeepGEMM JIT 触发验证** | ✅ `--moe-runner-backend deep_gemm` + fp8：GROUPED_GEMM_NT_F8F8BF16（32 groups）编译成功 + 512 warmup 完成，缓存落盘 `~/.cache/sglang/deep_gemm`；fp8 per-token-group-quant kernel 亦被 JIT |
 | **自包含 bundle + E2E 交付验证** | ✅ 8.0G 目录 / 3.3G tar.zst；解压到异路径 + 假 HOME + 只读缓存 + `env -i` 无 toolkit + crash-on-jit：**60s healthy，生成正常**（granite MoE） |
-| **运行库 block-list 裁剪** | ✅ `/proc/maps` 实测：cudnn 子库 460M + cu13 死重 310M + 头文件 97M 未加载 → 删除后 7.1G 重验 PASS（55s healthy + chat 正常） |
+| **运行库 block-list 裁剪** | ✅ `/proc/maps` 实测：cu13 死重 310M（nvrtc.alt/cusolverMg/nvvm/nvperf）未加载 → 删除后重验 PASS。多模态决策后 cudnn/头文件恢复保留 |
+| **多模态支持（决策 B，2026-09-17）** | ✅ 依赖装回（torchaudio/torchcodec/av/timm，版本对齐）+ 闭包自动化；**Qwen3-VL-2B 视觉验证**：venv 与 bundle（env -i）均 PASS，图片文字逐字识别正确 |
+
+### 多模态验证细节（Qwen3-VL-2B）
+
+- 视觉链路完整：base64 图片 → qwen_vl processor → vision encoder → 正确描述
+  （背景色 / 逐字文字 / 图形形状全部准确）；bundle 级 env -i 启动 50s healthy
+- VL 显存提示：`--mem-fraction-static` 建议 **0.78**（多模态 feature-transport 池
+  + attention workspace 额外占显存，0.85 会挤到 OOM 边界）
+- **闭包自动化（系统性修复）**：`compute_models_closure()` 从目标模型前缀自动展开
+  传递依赖（三种 import 形式全覆盖：名字导入 / 模块导入 / 目录依赖）。manifest
+  只声明目标族（llama/qwen/deepseek/granite），148 文件 + 3 目录自动展开——
+  此前 7 次手动踩坑（mixtral/dbrx/dspark/clip/cosmos3/interns2/dots3_common）终结
+- 已知边界：inkling 系模型完整运行需 nvidia-cutlass-dsl（已卸载；注册静默跳过，
+  不影响 Qwen/DeepSeek 路径；将来支持时装回 +450M）
 
 结论：**预生成 JIT 缓存替代 CUDA toolkit 的路线在本机验证成立**。
 验证覆盖：dense（Qwen3-4B）+ MoE（granite，Triton fused kernel）+ fp8 量化 +

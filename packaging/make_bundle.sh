@@ -53,20 +53,17 @@ mkdir -p "$OUT_ROOT/lib/python"
 cp -a "$VENV_SP" "$OUT_ROOT/lib/python/site-packages"
 
 # --- runtime block-list prune (verified 2026-09-16 via /proc/<pid>/maps on a
-#     live Qwen3-4B serve: these files are never loaded by the whitelisted
-#     model path; bundle 8.0G -> 7.1G). Scope note: this is a *declarative*
-#     cut — future models that actually use cudnn engines / cusolverMg /
-#     nvvm (e.g. some conv-heavy multimodal) need these re-added. ---
+#     live serve: these files are never loaded; ~310M). Since the 2026-09-17
+#     multimodal decision (option B) the cudnn engine sublibs and ALL headers
+#     are KEPT: VL models may dlopen cudnn for conv-heavy vision encoders and
+#     may trigger new flashinfer JIT builds that need headers on the warmup
+#     machine. ---
 PRUNE_SP="$OUT_ROOT/lib/python/site-packages"
 rm -f "$PRUNE_SP/nvidia/cu13/lib/libnvrtc.alt.so.13" \
       "$PRUNE_SP/nvidia/cu13/lib/libcusolverMg.so.12" \
       "$PRUNE_SP/nvidia/cu13/lib/libnvvm.so.4" \
       "$PRUNE_SP/nvidia/cu13/lib/libnvperf_host.so" \
       "$PRUNE_SP/nvidia/cu13/lib/libnvperf_target.so"
-rm -f "$PRUNE_SP"/nvidia/cudnn/lib/libcudnn_{engines_precompiled,adv,heuristic,\
-ops,engines_runtime_compiled,graph,cnn}.so.9
-rm -rf "$PRUNE_SP/torch/include" "$PRUNE_SP/flashinfer/include" \
-      "$PRUNE_SP"/nvidia/*/include
 
 # --- engine: slim sglang source tree ---
 cp -a "$SLIM_TREE/sglang" "$OUT_ROOT/engine/sglang"

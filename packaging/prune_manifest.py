@@ -96,16 +96,15 @@ PACKAGE_EXCLUDES = [
 ]
 
 # ---------------------------------------------------------------------------
-# Model whitelist: keep llama/qwen/deepseek families + shared infrastructure.
+# Model whitelist: keep target families + shared infrastructure.
 # registry.py discovers models via pkgutil scanning, so missing files are
 # simply not registered (SGLang upstream design, zero patch).
+# Dependency closure (mixtral, dbrx, dspark, cosmos3, interns2*, clip, ...)
+# is computed automatically by build_slim.py's compute_models_closure()
+# from module-level imports of kept model files and multimodal processors —
+# only target families belong here.
 # ---------------------------------------------------------------------------
-MODELS_KEEP_PREFIXES = (
-    "llama", "qwen", "deepseek", "granite",
-    "mixtral",  # granitemoe.py imports mixtral.py (dependency closure)
-    "dbrx",     # deepseek_v4.py imports dbrx.py (dependency closure, found in e2e)
-    "dspark",   # deepseek_v4_dspark.py imports dspark.py (closure #3, found in serve log)
-)
+MODELS_KEEP_PREFIXES = ("llama", "qwen", "deepseek", "granite")
 MODELS_KEEP_SHARED = {"__init__.py", "registry.py", "utils.py", "transformers.py"}
 MODELS_KEEP_DIRS = {"deepseek_common"}
 

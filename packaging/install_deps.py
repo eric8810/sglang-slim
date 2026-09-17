@@ -32,13 +32,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Packages dropped after smoke-verified slimming (2026-09-16, Qwen3-4B).
 # Each entry kept here must have passed the --no-toolkit smoke test.
+# NOTE: multimodal deps (torchaudio/torchcodec/av/timm) are KEPT since the
+# 2026-09-17 product decision to support multimodal models (option B).
 DROPPED_REQUIREMENTS = {
-    # multimodal/audio stacks not needed for text-only serving
-    "torchaudio",        # keep torchvision (CPU) + pillow + soundfile: imported
-    "torchcodec",        #   at module level by srt/utils/common.py and
-    "av",                #   entrypoints/openai/audio_chunking.py
-    "timm",
-    "decord2",
     # model-hub / dataset tooling (weights are delivered out-of-band)
     "modelscope",
     "blobfile",
@@ -56,6 +52,9 @@ DROPPED_REQUIREMENTS = {
     "interegular",
     # JIT toolchains: kernels are prebuilt during warmup; target machines
     # never compile. Keep the cache warm in THIS exact package set.
+    # WARNING: cutlass-dsl is dropped, but flashinfer cute-dsl ops and
+    # tokenspeed-mla declare a dependency on it — if a multimodal model
+    # triggers a cute-dsl kernel at runtime, reinstall it (+450M).
     "tilelang",
     "numba",
     "llvmlite",
