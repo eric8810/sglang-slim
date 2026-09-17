@@ -79,6 +79,26 @@ models 排除纳入 build_slim 的 AST 检查（warn 级）。
 | **运行库 block-list 裁剪** | ✅ `/proc/maps` 实测：cu13 死重 310M（nvrtc.alt/cusolverMg/nvvm/nvperf）未加载 → 删除后重验 PASS。多模态决策后 cudnn/头文件恢复保留 |
 | **多模态支持（决策 B，2026-09-17）** | ✅ 依赖装回（torchaudio/torchcodec/av/timm，版本对齐）+ 闭包自动化；**Qwen3-VL-2B 视觉验证**：venv 与 bundle（env -i）均 PASS，图片文字逐字识别正确 |
 
+### 交付物双形态（2026-09-17 完成）
+
+| 形态 | 命令 | 产物 | 体积 |
+|---|---|---|---|
+| 自包含目录 | `make_bundle.sh` | `sglang-lite-*.tar.zst` | 3.2 GB（解压 7.8 GB） |
+| OCI 镜像 | `make_image.sh --save` | `sglang-lite-*.oci.tar` | 3.6 GB（`docker load` 即用） |
+
+镜像设计：ubuntu:24.04 base（glibc 2.39 与构建机一致）+ **COPY 自包含目录**
+（非 pip install——Python/包/JIT 缓存全部构建期锁定，镜像即 immutable artifact）。
+目标机：docker + nvidia-container-toolkit；模型走 volume 挂载（/models）。
+
+```bash
+docker load -i sglang-lite-bd45cd50.oci.tar
+docker run --gpus all -v /path/to/models:/models -p 30000:30000 \
+  sglang-lite:bd45cd50 --model-path /models/qwen3-4b --host 0.0.0.0 --port 30000 --mem-fraction-static 0.78
+```
+
+注意：本机未装 nvidia-container-toolkit（sudo 受限），镜像做了构建 +
+容器内 bundle 树验证；**GPU 运行级验证需在有 toolkit 的主机补做**。
+
 ### 多模态验证细节（Qwen3-VL-2B）
 
 - 视觉链路完整：base64 图片 → qwen_vl processor → vision encoder → 正确描述
