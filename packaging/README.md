@@ -181,13 +181,36 @@ AST 检查证伪的"看似可删"项（全部归层 3，需 patch）：
 - `sglang/benchmark`、`sglang/lang` ← 被 test/* 模块级引用
 - `models/{dots3,inkling}_common` ← multimodal/lora 模块级引用
 
-## 下一步
+## 项目状态：产品可用态（2026-09-17 收尾）
 
-1. 依赖瘦身：剔除多模态（torchvision/torchaudio/av/timm）与未用依赖 → venv 8.9G 目标 <7G
-2. MoE 模型冒烟（Qwen3-30B-A3B 之类，验证 deep-gemm JIT 预热面）——需更大显存或量化权重
-3. 真无-toolkit 验证：卸 venv 内 nvidia-cuda-nvcc 轮子 + 屏蔽系统 CUDA 路径后重跑 --crash-on-jit
-4. 自包含目录打包器（tar.zst + launcher 脚本）+ OCI 镜像包装
-5. 缓存可移植性：把 ~/.cache/sglang 等搬到新目录/机器验证 key 无绝对路径漂移
+核心命题全部实证：**零 diff 跟上游、srt -21%、双形态交付（tar 3.2G / 镜像 3.6G）、
+目标机仅需 NVIDIA 驱动、dense + MoE + fp8 + 多模态（VL）全验证**。
+
+### 日常维护（唯一例行事项）
+
+跟上游 tag 重跑管线（约 15 分钟）：
+
+```bash
+git fetch --tags && git checkout <new-tag>
+python3 packaging/build_slim.py                                # AST 契约自动把关
+SGLANG_SMOKE_MODEL=<M> bash packaging/smoke_test.sh            # 预热 + 冒烟
+SGLANG_SLIM_BUILD=<B> bash packaging/make_bundle.sh            # tar.zst
+SGLANG_SLIM_BUILD=<B> bash packaging/make_image.sh --save      # OCI 镜像
+```
+
+### 部署触发清单（等真实条件，非开发任务）
+
+| 项 | 触发条件 | 风险预判 |
+|---|---|---|
+| GPU 容器运行验证 | 有 nvidia-container-toolkit 的机器 | 低（镜像即已验证目录） |
+| 跨机缓存移植（glibc 边界） | 第一台真实客户机 | 中（glibc ≥ 2.39 唯一真风险） |
+| DeepSeek 形状 deep-gemm 预热 | 有 DeepSeek 部署需求 + 大显存 | deep-gemm 机制已验，只差官方形状 |
+
+### 已评估放弃 / 按需的项
+
+- **层 3 patch**（-21% → -43%）：放弃——收益 <0.5% 体积，代价是破坏零 diff 优势（负 ROI）
+- **fatbin 瘦身**（-1G）：按需——客户抱怨下载体积再做；strip 会引入 arch 锁定 + 升级重验负担
+- **Triton 预加载**：已自然解决——首次请求覆盖，且 0.78 mem-fraction 有 0.5G 余量
 
 研究文档：`~/research/gpu-inference-binary-release/`（pruning-plan.md 为总计划）
 

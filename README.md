@@ -59,14 +59,28 @@ research/     完整调研资产：binary 形态先例、Python→binary 打包�
               上下游同步实践（含独立复核记录）与精简实施计划
 ```
 
-## 路线图
+## 项目状态与清单
 
-- [x] ~~真无-toolkit 环境 Go/No-Go~~（2026-09-16 PASS：卸 nvcc + 屏蔽 CUDA 后 crash-on-jit 冷启动零编译）
-- [ ] 依赖瘦身（剔除多模态依赖，venv 8.9G → <7G）
-- [ ] MoE 模型预热面验证（deep-gemm 3072 kernel 预编译）——需目标模型确定（16GB 显存需量化权重）
-- [ ] 自包含目录打包器（tar.zst + launcher）与 OCI 镜像包装
-- [ ] JIT 缓存跨机器可移植性验证（换机后 key 命中）
-- [ ] 层 3 patch 集合（speculative/lora/multimodal 延迟 import 化，目标 srt -43%）
+**产品可用态**（2026-09-17 收尾）：dense + MoE + fp8 + 多模态（VL）全验证，
+双形态交付（tar.zst 3.2G / OCI 镜像 3.6G），目标机仅需 NVIDIA 驱动。
+日常维护 = 跟上游 tag 重跑管线（build → smoke → bundle → image，约 15 分钟）。
+
+已完成的关键验证：
+- [x] 真 no-toolkit Go/No-Go（env -i + crash-on-jit 零编译）
+- [x] 依赖瘦身 8.9G → 7.5G + 运行库 block-list 310M
+- [x] MoE + fp8 + DeepGEMM JIT 触发验证
+- [x] 自包含 bundle + E2E 交付（异路径/假 HOME/只读/无 toolkit）
+- [x] 多模态：Qwen3-VL-2B 图片逐字识别（venv + bundle 双验证）
+- [x] 模型白名单依赖闭包自动化（7 次手动踩坑终结）
+
+部署触发清单（等真实条件，非开发任务）：
+- [ ] GPU 容器运行验证（需 nvidia-container-toolkit 的机器；风险低）
+- [ ] 跨机缓存移植 / glibc 边界（第一台真实客户机）
+- [ ] DeepSeek 形状 deep-gemm 预热（有 DeepSeek 需求 + 大显存时）
+
+已评估放弃 / 按需：
+- 层 3 patch（-43% 代码）：放弃，负 ROI（破坏零 diff 优势换 <0.5% 体积）
+- fatbin 瘦身（-1G）：按需（客户抱怨下载体积再做）
 
 ## License
 
