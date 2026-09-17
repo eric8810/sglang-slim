@@ -20,6 +20,10 @@ main 每天 ~59 个 PR，不可能逐 commit 跟；tag 是稳定锚点。**每�
 
 ## 更新步骤
 
+> 锚点判定：以 `git log -1 --format=%h` 为准。上游 release tag 打在发布分支上，
+> 与 main 锚点可能互相不包含（`merge-base --is-ancestor v0.5.19 <锚点>` 为 NO 属
+> 正常现象），勿据此误判"落后于 tag"——只比较 tag 的**发布日期**与锚点日期。
+
 ```bash
 cd <sglang-checkout>
 git fetch --tags && git checkout v0.5.20     # 新 tag
